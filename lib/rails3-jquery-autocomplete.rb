@@ -27,12 +27,12 @@ module Rails3JQueryAutocomplete
   #
   module ClassMethods
     def autocomplete(object, method, options = {})
-      limit = options[:limit] || 10
-      order = options[:order] || "#{method} ASC"
+      @limit = options[:limit] || 10
+      @order = options[:order] || "#{method} ASC"
 
       define_method("autocomplete_#{object}_#{method}") do
         unless params[:term] && params[:term].empty?
-          items = object.to_s.camelize.constantize.where(["LOWER(#{method}) LIKE ?", "#{(options[:full] ? '%' : '')}#{params[:term].downcase}%"]).limit(limit).order(order)
+          items = find_items(object,method,options)
         else
           items = {}
         end
@@ -46,6 +46,18 @@ module Rails3JQueryAutocomplete
   def json_for_autocomplete(items, method)
     items.collect {|i| {"id" => i.id, "label" => i.send(method), "value" => i.send(method)}}
   end
+  
+  def find_items(object, method, options)
+    search = (options[:full] ? '.*' : '^') + params[:term] + '.*'
+    if Object.const_defined?('ActiveRecord')
+      return object.to_s.camelize.constantize.where(["LOWER(#{method}) LIKE ?", "#{(options[:full] ? '%' : '')}#{params[:term].downcase}%"]).limit(@limit).order(@order)
+    elsif Object.const_defined?('MongoMapper') 
+      object.to_s.camelize.constantize.all(:conditions => {"#{method.to_s.downcase}" => /#{search}/ }, :limit => @limit, :order => @order) 
+    elsif Object.const_defined?('Mongoid')
+      object.to_s.camelize.constantize.where(method.to_sym => /#{search}/i).limit(@limit).order_by(method.to_sym.asc)
+    end
+  end
+  
 end
 
 class ActionController::Base
